@@ -1,0 +1,6 @@
+{
+  "name": "Healthcare Analytics Dashboard",
+  "description": "An interactive hospital analytics dashboard featuring AI-driven disease prediction, patient readmission risk analysis, survival-based treatment effectiveness comparison, and HIPAA-compliant FHIR data explorer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
