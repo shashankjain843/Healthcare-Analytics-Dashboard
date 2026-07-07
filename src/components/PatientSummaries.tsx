@@ -20,10 +20,20 @@ import {
   ChevronRight,
   Heart,
   Thermometer,
-  Percent
+  Percent,
+  Sparkles,
+  Send,
+  RefreshCw,
+  Copy,
+  Check
 } from "lucide-react";
 import { Patient, UserRole } from "../types";
 import { calculateReadmissionRisk } from "../data";
+
+interface Message {
+  role: "user" | "model";
+  content: string;
+}
 
 interface PatientSummariesProps {
   patients: Patient[];
@@ -41,7 +51,154 @@ export default function PatientSummaries({
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(patients[0]?.id || null);
   const [searchQuery, setSearchQuery] = useState("");
   
+  // AI Clinical Copilot State
+  const [copilotTab, setCopilotTab] = useState<"summary" | "chat">("summary");
+  const [aiSummaries, setAiSummaries] = useState<{ [patientId: string]: string }>({});
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
+  
+  const [chatHistories, setChatHistories] = useState<{ [patientId: string]: Message[] }>({});
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+  
   const activePatient = patients.find(p => p.id === selectedPatientId);
+
+  const handleGenerateSummary = async (patient: Patient) => {
+    if (!patient) return;
+    setAiSummaryLoading(true);
+    setAiSummaryError(null);
+    try {
+      const response = await fetch("/api/generate-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patient }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate AI summary");
+      }
+      setAiSummaries(prev => ({ ...prev, [patient.id]: data.summary }));
+      
+      onAddAuditLog(
+        "Generated Gemini AI Summary", 
+        `Generated real-time clinical discharge summary for patient ${patient.name} (${patient.id}).`
+      );
+      triggerNotification(
+        "AI Summary Generated", 
+        `Gemini AI successfully synthesized records for ${patient.name}.`,
+        "success"
+      );
+    } catch (err: any) {
+      console.error(err);
+      setAiSummaryError(err.message || "An unexpected error occurred.");
+      triggerNotification(
+        "AI Generation Failed", 
+        err.message || "Could not connect to Gemini API server.",
+        "error"
+      );
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  };
+
+  const handleSendChatMessage = async (presetMessage?: string) => {
+    if (!activePatient) return;
+    const textToSend = presetMessage || chatInput;
+    if (!textToSend.trim() || chatLoading) return;
+
+    const currentHistory = chatHistories[activePatient.id] || [];
+    const updatedHistory: Message[] = [...currentHistory, { role: "user", content: textToSend }];
+    
+    // Update local state immediately for user bubble
+    setChatHistories(prev => ({ ...prev, [activePatient.id]: updatedHistory }));
+    if (!presetMessage) setChatInput("");
+    setChatLoading(true);
+
+    try {
+      const response = await fetch("/api/chat-consultation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patient: activePatient, messages: updatedHistory }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get response from AI");
+      }
+
+      setChatHistories(prev => ({
+        ...prev,
+        [activePatient.id]: [...updatedHistory, { role: "model", content: data.reply }]
+      }));
+
+      onAddAuditLog(
+        "Consulted Gemini Assistant", 
+        `Clinician queried Gemini clinical assistant regarding patient ${activePatient.name} (${activePatient.id}).`
+      );
+    } catch (err: any) {
+      console.error(err);
+      triggerNotification(
+        "Chat Consultation Failed",
+        err.message || "Could not reach Gemini AI advisor.",
+        "error"
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const copySummaryToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSummary(true);
+    triggerNotification("Copied to Clipboard", "AI Summary copied successfully.", "info");
+    setTimeout(() => setCopiedSummary(false), 2000);
+  };
+
+  const downloadSummaryTxt = (patient: Patient, text: string) => {
+    const filename = `gemini_summary_${patient.id}.txt`;
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    triggerNotification("Summary Downloaded", "Summary saved as text file.", "success");
+  };
+
+  const renderMarkdownToHtml = (markdown: string) => {
+    if (!markdown) return "";
+    
+    // Replace headers
+    let html = markdown
+      .replace(/^### (.*$)/gim, '<h5 class="text-xs font-bold text-slate-800 mt-3 mb-1.5">$1</h5>')
+      .replace(/^## (.*$)/gim, '<h4 class="text-sm font-bold text-slate-900 mt-4 mb-2">$1</h4>')
+      .replace(/^# (.*$)/gim, '<h3 class="text-base font-black text-slate-900 mt-5 mb-3">$1</h3>');
+      
+    // Replace bold
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
+    
+    // Replace list items
+    html = html.replace(/^\s*[-*+]\s+(.*$)/gim, '<li class="text-[11px] text-slate-600 list-disc ml-5 mb-1">$1</li>');
+    
+    // Replace horizontal rule
+    html = html.replace(/^\s*---(.*$)/gim, '<hr class="border-slate-200 my-3" />');
+    
+    // Replace paragraphs (lines not starting with tags)
+    const lines = html.split('\n');
+    const processedLines = lines.map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+      if (trimmed.startsWith('<h') || trimmed.startsWith('<li') || trimmed.startsWith('<hr') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol')) {
+        return line;
+      }
+      return `<p class="text-[11px] text-slate-600 leading-relaxed mb-1.5">${line}</p>`;
+    });
+    
+    return processedLines.filter(l => l !== "").join('\n');
+  };
 
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -479,6 +636,264 @@ Clinical Synopsis  : ${activePatient.notes || "No acute discharge notes provided
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 leading-relaxed italic">
                     "{activePatient.notes || "No standard notes provided. ATTN: Attending caseworker requested follow up appointment setup."}"
                   </div>
+                </div>
+
+                {/* Gemini AI Clinical Copilot */}
+                <div className="border-t border-slate-200 pt-6 mt-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                        <Sparkles className="w-4 h-4 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                          Gemini AI Clinical Copilot
+                          <span className="px-1.5 py-0.5 text-[8px] font-extrabold bg-blue-50 text-blue-600 border border-blue-100 rounded-full tracking-normal uppercase">
+                            v2.5 Flash
+                          </span>
+                        </h4>
+                        <p className="text-[10px] text-slate-500">Real-time clinical insights, summaries, and chat advisory.</p>
+                      </div>
+                    </div>
+
+                    {/* Tab Selectors */}
+                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto shadow-inner">
+                      <button
+                        onClick={() => setCopilotTab("summary")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                          copilotTab === "summary"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        Clinical Summary
+                      </button>
+                      <button
+                        onClick={() => setCopilotTab("chat")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                          copilotTab === "chat"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        Clinical Assistant
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Tab Content */}
+                  {copilotTab === "summary" && (
+                    <div className="space-y-4">
+                      {aiSummaryLoading ? (
+                        <div className="py-12 px-4 text-center bg-slate-50 border border-slate-200 rounded-xl space-y-4 shadow-xs">
+                          <div className="flex justify-center">
+                            <div className="relative">
+                              <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-blue-600 animate-spin"></div>
+                              <Sparkles className="w-5 h-5 text-indigo-600 absolute top-3.5 left-3.5 animate-pulse" />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Gemini is synthesizing clinical data...</p>
+                            <p className="text-[10px] text-slate-400 mt-1">Analyzing vitals, comorbidities, medications, and admission history.</p>
+                          </div>
+                        </div>
+                      ) : aiSummaryError ? (
+                        <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                          <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <h5 className="text-xs font-bold text-red-800">Generation Error</h5>
+                              <p className="text-[11px] text-red-600 mt-0.5">{aiSummaryError}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleGenerateSummary(activePatient)}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Retry Summary Generation
+                          </button>
+                        </div>
+                      ) : aiSummaries[activePatient.id] ? (
+                        <div className="space-y-3">
+                          {/* Summary Action Toolbar */}
+                          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 p-2 rounded-lg">
+                            <span className="text-[10px] text-slate-400 font-medium">Generated via Gemini Clinical LLM</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => copySummaryToClipboard(aiSummaries[activePatient.id])}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Copy markdown content to clipboard"
+                              >
+                                {copiedSummary ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-green-600" />
+                                    <span className="text-green-600">Copied!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => downloadSummaryTxt(activePatient, aiSummaries[activePatient.id])}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Download as .txt file"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Download</span>
+                              </button>
+                              <button
+                                onClick={() => handleGenerateSummary(activePatient)}
+                                className="p-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 rounded-md transition-colors cursor-pointer"
+                                title="Regenerate summary"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Rendered Summary Box */}
+                          <div 
+                            className="p-5 bg-white border border-slate-200 rounded-xl max-h-96 overflow-y-auto shadow-inner text-slate-700 space-y-3"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(aiSummaries[activePatient.id]) }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-center py-10 px-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-3">
+                          <Sparkles className="w-8 h-8 text-blue-500/70 mx-auto animate-pulse" />
+                          <div>
+                            <h5 className="font-bold text-slate-700 text-xs">No AI Discharge Summary Generated</h5>
+                            <p className="text-[10px] text-slate-400 max-w-sm mx-auto mt-1 leading-normal">
+                              Synthesize structured clinical metrics, diagnoses, patient age, risk categories, and medications into a professional discharge report using Gemini.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleGenerateSummary(activePatient)}
+                            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs rounded-lg shadow-md shadow-blue-500/10 hover:opacity-95 transition-opacity flex items-center gap-1.5 mx-auto cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Generate AI Summary
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Chat Tab Content */}
+                  {copilotTab === "chat" && (
+                    <div className="space-y-4">
+                      {/* Chat Messages Log */}
+                      <div className="border border-slate-200 rounded-xl bg-slate-50/50 p-4 min-h-[220px] max-h-[350px] overflow-y-auto flex flex-col gap-3 shadow-inner">
+                        {(!chatHistories[activePatient.id] || chatHistories[activePatient.id].length === 0) ? (
+                          <div className="my-auto text-center py-4 space-y-3">
+                            <Clipboard className="w-7 h-7 text-slate-400 mx-auto" />
+                            <div>
+                              <p className="text-xs font-bold text-slate-600">Consult Gemini Clinical Advisor</p>
+                              <p className="text-[10px] text-slate-400 max-w-xs mx-auto mt-0.5 leading-normal">
+                                Ask about drug-drug interactions, dietary precautions, outpatient guidelines, or rehabilitation milestones for {activePatient.name}.
+                              </p>
+                            </div>
+                            
+                            {/* Preset Buttons */}
+                            <div className="flex flex-wrap justify-center gap-1.5 pt-2 max-w-md mx-auto">
+                              <button
+                                type="button"
+                                onClick={() => handleSendChatMessage("Check for potential drug-drug interactions in the discharge medications.")}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 rounded-full transition-colors cursor-pointer"
+                              >
+                                💊 Drug Interactions
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendChatMessage("What are the key physiological warning signs that this patient might deteriorate?")}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 rounded-full transition-colors cursor-pointer"
+                              >
+                                ⚠️ Deterioration Warning Signs
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendChatMessage("Suggest a tailored diet and vital monitoring protocol for home-care.")}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 rounded-full transition-colors cursor-pointer"
+                              >
+                                🥗 Diet & Home Care Plan
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          chatHistories[activePatient.id].map((msg, index) => {
+                            const isUser = msg.role === "user";
+                            return (
+                              <div
+                                key={index}
+                                className={`flex items-start gap-2 max-w-[85%] ${isUser ? "self-end flex-row-reverse" : "self-start"}`}
+                              >
+                                {!isUser && (
+                                  <div className="w-5 h-5 rounded bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 text-[8px] font-bold shadow-xs">
+                                    <Sparkles className="w-2.5 h-2.5" />
+                                  </div>
+                                )}
+                                <div
+                                  className={`p-3 rounded-2xl text-[11px] leading-relaxed ${
+                                    isUser
+                                      ? "bg-blue-600 text-white rounded-tr-none shadow-xs font-semibold"
+                                      : "bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-xs text-left"
+                                  }`}
+                                >
+                                  {isUser ? (
+                                    msg.content
+                                  ) : (
+                                    <div 
+                                      className="space-y-1.5"
+                                      dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(msg.content) }}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+
+                        {chatLoading && (
+                          <div className="flex items-start gap-2 max-w-[80%] self-start">
+                            <div className="w-5 h-5 rounded bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0">
+                              <Sparkles className="w-2.5 h-2.5 animate-spin" />
+                            </div>
+                            <div className="p-3 bg-white border border-slate-200 text-slate-400 rounded-2xl rounded-tl-none text-[11px] shadow-xs italic flex items-center gap-1.5">
+                              <span>Gemini Clinical Advisor is formulating response...</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Chat Input Container */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSendChatMessage();
+                        }}
+                        className="flex gap-2"
+                      >
+                        <input
+                          type="text"
+                          placeholder={`Ask Gemini about ${activePatient.name}'s case...`}
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          className="flex-1 px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-xs"
+                          disabled={chatLoading}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!chatInput.trim() || chatLoading}
+                          className="px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-md hover:opacity-95 disabled:opacity-50 disabled:shadow-none flex items-center justify-center transition-all cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
