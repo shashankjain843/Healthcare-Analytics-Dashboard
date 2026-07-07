@@ -206,73 +206,475 @@ export default function PatientSummaries({
     p.diagnosis.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Helper to generate a beautifully styled PDF report (letterhead, tables, AI summary, doctor sign)
+  const generatePDFReport = (patient: Patient, aiSummary: string) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      triggerNotification("Popup Blocked", "Please allow popups to export PDF.", "error");
+      return;
+    }
+
+    const timestamp = new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }) + " (Local Time)";
+
+    const formattedVitals = [];
+    if (patient.vitals.bloodPressure) formattedVitals.push({ name: "Blood Pressure", val: patient.vitals.bloodPressure, goal: "< 130/80 mmHg" });
+    if (patient.vitals.heartRate) formattedVitals.push({ name: "Heart Rate", val: `${patient.vitals.heartRate} bpm`, goal: "60 - 100 bpm" });
+    if (patient.vitals.oxygenSat) formattedVitals.push({ name: "Oxygen Saturation", val: `${patient.vitals.oxygenSat}%`, goal: "> 92%" });
+    if (patient.vitals.hba1c) formattedVitals.push({ name: "HbA1c Level", val: patient.vitals.hba1c, goal: "< 7.0%" });
+    if (patient.vitals.lvef) formattedVitals.push({ name: "LVEF Score", val: `${patient.vitals.lvef}%`, goal: "> 50%" });
+    if (patient.vitals.fev1) formattedVitals.push({ name: "FEV1 Volume", val: `${patient.vitals.fev1}%`, goal: "> 50%" });
+
+    const vitalsHtml = formattedVitals.map(v => `
+      <div class="vital-card">
+        <div class="vital-val">${v.val}</div>
+        <div class="vital-lbl">${v.name}</div>
+        <div style="font-size: 8px; color: #94a3b8; margin-top: 2px;">Goal: ${v.goal}</div>
+      </div>
+    `).join("");
+
+    const medsHtml = patient.dischargeMeds.map(med => `
+      <li class="med-item">${med}</li>
+    `).join("") || '<li class="med-item" style="color: #94a3b8; font-style: italic;">No medications logged.</li>';
+
+    const comorbiditiesHtml = patient.comorbidities.map(c => `
+      <span style="display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-right: 5px; margin-bottom: 5px; font-weight: 500; color: #334155;">
+        ${c}
+      </span>
+    `).join("") || '<span style="color: #94a3b8; font-style: italic; font-size: 11px;">None</span>';
+
+    // Parse Markdown Summary if present
+    const aiSummaryHtml = aiSummary 
+      ? `<div class="ai-summary-box">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; border-bottom: 1px solid #bbf7d0; padding-bottom: 4px;">
+            <span style="font-size: 14px;">✨</span>
+            <strong style="text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #16a34a;">Gemini AI Synthesized Discharge Dossier</strong>
+          </div>
+          ${renderMarkdownToHtml(aiSummary)}
+         </div>`
+      : `<div class="notes-box">
+          ${patient.notes || "No acute discharge notes provided by attending physician."}
+         </div>`;
+
+    const docName = "Dr. Arvind Sharma, MD";
+    const docTitle = "Chief of Clinical Cardiology";
+    const docSigText = "Dr. A. Sharma";
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Clinical Summary - ${patient.name} (${patient.id})</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Inter:wght@400;500;600;700;800&display=swap');
+            body {
+              font-family: 'Inter', sans-serif;
+              color: #1e293b;
+              margin: 40px;
+              line-height: 1.5;
+              background-color: #ffffff;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 2px solid #2563eb;
+              padding-bottom: 15px;
+              margin-bottom: 20px;
+            }
+            .logo-area {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+            }
+            .logo-icon {
+              width: 38px;
+              height: 38px;
+              background: linear-gradient(135deg, #2563eb, #4f46e5);
+              color: white;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: 800;
+              font-size: 20px;
+            }
+            .hospital-name {
+              font-size: 18px;
+              font-weight: 800;
+              color: #0f172a;
+              letter-spacing: -0.5px;
+              margin: 0;
+            }
+            .hospital-sub {
+              font-size: 9px;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              margin: 2px 0 0 0;
+              font-weight: 700;
+            }
+            .hospital-contact {
+              text-align: right;
+              font-size: 10px;
+              color: #64748b;
+              line-height: 1.4;
+            }
+            .report-title {
+              text-align: center;
+              font-size: 15px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 1.5px;
+              margin: 25px 0;
+              color: #1e293b;
+              border-bottom: 1px double #e2e8f0;
+              padding-bottom: 8px;
+            }
+            .section-title {
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #2563eb;
+              border-bottom: 1px solid #cbd5e1;
+              padding-bottom: 4px;
+              margin-top: 22px;
+              margin-bottom: 12px;
+              letter-spacing: 0.5px;
+            }
+            .grid-2 {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 30px;
+            }
+            .info-table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            .info-table td {
+              padding: 5px 0;
+              font-size: 11px;
+              vertical-align: top;
+            }
+            .info-table td.label {
+              color: #64748b;
+              width: 45%;
+              font-weight: 500;
+            }
+            .info-table td.value {
+              font-weight: 600;
+              color: #0f172a;
+            }
+            .vitals-grid {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 12px;
+            }
+            .vital-card {
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              padding: 10px;
+              border-radius: 8px;
+              text-align: center;
+            }
+            .vital-val {
+              font-size: 13px;
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .vital-lbl {
+              font-size: 9px;
+              color: #64748b;
+              font-weight: 500;
+              text-transform: uppercase;
+              margin-top: 3px;
+            }
+            .med-list {
+              margin: 0;
+              padding-left: 18px;
+            }
+            .med-item {
+              font-size: 11px;
+              margin-bottom: 4px;
+              color: #334155;
+            }
+            .notes-box {
+              background: #f8fafc;
+              border-left: 3px solid #64748b;
+              padding: 12px;
+              font-style: italic;
+              font-size: 11px;
+              color: #475569;
+              border-radius: 0 8px 8px 0;
+            }
+            .ai-summary-box {
+              background: #f0fdf4;
+              border: 1px solid #bbf7d0;
+              border-left: 4px solid #16a34a;
+              padding: 15px;
+              font-size: 11px;
+              color: #1e3a1e;
+              border-radius: 8px;
+            }
+            .ai-summary-box h3 {
+              font-size: 13px;
+              color: #14532d;
+              margin: 12px 0 6px 0;
+              font-weight: 700;
+            }
+            .ai-summary-box h4 {
+              font-size: 12px;
+              color: #14532d;
+              margin: 10px 0 4px 0;
+              font-weight: 700;
+            }
+            .ai-summary-box h5 {
+              font-size: 11px;
+              color: #14532d;
+              margin: 8px 0 4px 0;
+              font-weight: 700;
+            }
+            .ai-summary-box p {
+              margin: 0 0 6px 0;
+              line-height: 1.5;
+            }
+            .ai-summary-box li {
+              margin-bottom: 3px;
+              font-size: 11px;
+            }
+            .footer-sig {
+              margin-top: 40px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              page-break-inside: avoid;
+            }
+            .sig-block {
+              text-align: center;
+              width: 220px;
+            }
+            .signature-line {
+              border-bottom: 1px solid #94a3b8;
+              margin-bottom: 6px;
+              height: 45px;
+              display: flex;
+              align-items: flex-end;
+              justify-content: center;
+            }
+            .signature-cursive {
+              font-family: 'Alex Brush', cursive;
+              font-size: 26px;
+              color: #1e3a8a;
+              line-height: 1;
+              transform: rotate(-3deg);
+              margin-bottom: -5px;
+            }
+            .sig-title {
+              font-size: 11px;
+              color: #0f172a;
+              font-weight: 700;
+            }
+            .sig-sub {
+              font-size: 9px;
+              color: #64748b;
+              margin-top: 1px;
+            }
+            .disclaimer {
+              font-size: 8px;
+              color: #94a3b8;
+              text-align: center;
+              margin-top: 35px;
+              border-top: 1px dashed #e2e8f0;
+              padding-top: 8px;
+              page-break-inside: avoid;
+            }
+            @media print {
+              body {
+                margin: 20px;
+              }
+              .no-print {
+                display: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-area">
+              <div class="logo-icon">+</div>
+              <div>
+                <h1 class="hospital-name">APEXHEALTH CLINICAL PORTAL</h1>
+                <p class="hospital-sub">Apex Medical Research & General Hospital</p>
+              </div>
+            </div>
+            <div class="hospital-contact">
+              <strong>Emergency Helpline:</strong> +1 (555) 900-8800<br/>
+              <strong>EHR Registry Dept:</strong> info@apexhealth.org<br/>
+              <strong>Registry Location:</strong> Building B, Sector-4, Metro City
+            </div>
+          </div>
+
+          <div class="report-title">Official Patient Discharge Dossier</div>
+
+          <div class="grid-2">
+            <div>
+              <div class="section-title">Patient Profile</div>
+              <table class="info-table">
+                <tr>
+                  <td class="label">Patient Name:</td>
+                  <td class="value">${patient.name}</td>
+                </tr>
+                <tr>
+                  <td class="label">Patient ID:</td>
+                  <td class="value" style="font-family: monospace;">${patient.id}</td>
+                </tr>
+                <tr>
+                  <td class="label">Age / Gender:</td>
+                  <td class="value">${patient.age} Y / ${patient.gender}</td>
+                </tr>
+                <tr>
+                  <td class="label">Admitting Diagnosis:</td>
+                  <td class="value">${patient.diagnosis}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div>
+              <div class="section-title">Admission Details</div>
+              <table class="info-table">
+                <tr>
+                  <td class="label">Index Admission:</td>
+                  <td class="value">${patient.admissionDate}</td>
+                </tr>
+                <tr>
+                  <td class="label">Discharge Date:</td>
+                  <td class="value">${patient.dischargeDate}</td>
+                </tr>
+                <tr>
+                  <td class="label">Length of Stay (LOS):</td>
+                  <td class="value">${patient.lengthOfStay} Days</td>
+                </tr>
+                <tr>
+                  <td class="label">Prior Hospitalizations:</td>
+                  <td class="value">${patient.previousAdmissions === 0 ? "First index stay" : `${patient.previousAdmissions} (past 12M)`}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-top: 15px;">
+            <div>
+              <div class="section-title">Readmission Risk Index</div>
+              <table class="info-table">
+                <tr>
+                  <td class="label">Algorithmic Score:</td>
+                  <td class="value" style="color: ${patient.riskCategory === 'High' ? '#dc2626' : patient.riskCategory === 'Medium' ? '#d97706' : '#16a34a'}">
+                    ${patient.riskScore}%
+                  </td>
+                </tr>
+                <tr>
+                  <td class="label">Stratum Group:</td>
+                  <td class="value">
+                    <span style="padding: 1px 6px; background: ${patient.riskCategory === 'High' ? '#fee2e2' : patient.riskCategory === 'Medium' ? '#fef3c7' : '#dcfce7'}; color: ${patient.riskCategory === 'High' ? '#991b1b' : patient.riskCategory === 'Medium' ? '#92400e' : '#166534'}; border-radius: 4px; font-size: 10px; font-weight: 700;">
+                      ${patient.riskCategory.toUpperCase()} ALERT
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="label" style="padding-top: 10px;">Chronic Conditions:</td>
+                  <td style="padding-top: 10px;">${comorbiditiesHtml}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div>
+              <div class="section-title">Discharge Medication Regimen</div>
+              <ol class="med-list">
+                ${medsHtml}
+              </ol>
+            </div>
+          </div>
+
+          <div class="section-title">Attending Biomarkers & Vitals</div>
+          <div class="vitals-grid">
+            ${vitalsHtml}
+          </div>
+
+          <div class="section-title">Clinical Findings & Attending Notes</div>
+          <div style="margin-bottom: 25px;">
+            ${aiSummaryHtml}
+          </div>
+
+          <div class="footer-sig">
+            <div class="sig-block">
+              <div class="signature-line" style="border: none; font-size: 10px; color: #94a3b8; text-align: left; padding-bottom: 10px;">
+                Report Generated:<br/>
+                ${timestamp}
+              </div>
+              <div class="sig-title" style="text-align: left; border-top: 1px solid #e2e8f0; padding-top: 4px;">System Audit Verified</div>
+              <div class="sig-sub" style="text-align: left;">HIPAA RBAC Compliance Portal</div>
+            </div>
+
+            <div class="sig-block">
+              <div class="signature-line">
+                <span class="signature-cursive">${docSigText}</span>
+              </div>
+              <div class="sig-title">${docName}</div>
+              <div class="sig-sub">${docTitle}</div>
+            </div>
+          </div>
+
+          <div class="disclaimer">
+            CONFIDENTIALITY NOTICE: This medical record containing protected health information (PHI) is strictly confidential and protected by federal law (HIPAA 45 CFR). Unauthorized review, copying, or disclosure is prohibited. AI-generated insights are advisory only and must be validated by attending staff.
+          </div>
+          
+          <div class="no-print" style="margin-top: 30px; text-align: center;">
+            <button onclick="window.print()" style="padding: 8px 20px; background: #2563eb; color: white; border: none; font-size: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);">
+              Print Document (Save as PDF)
+            </button>
+          </div>
+
+          <script>
+            // Automatically prompt print dialog on load
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   // Helper to trigger report download
-  const handleExtractReport = (format: "txt" | "csv" | "fhir") => {
+  const handleExtractReport = (format: "pdf" | "csv" | "fhir") => {
     if (!activePatient) return;
+    
+    if (format === "pdf") {
+      const summaryText = aiSummaries[activePatient.id] || "";
+      generatePDFReport(activePatient, summaryText);
+      
+      // Audit Log & Toast Notification
+      onAddAuditLog("Extracted Patient Summary (PDF)", `Generated beautiful PDF discharge dossier of ${activePatient.name} (${activePatient.id}).`);
+      triggerNotification(
+        "PDF Generated Successfully", 
+        `Discharge dossier for ${activePatient.name} loaded in print view.`,
+        "success"
+      );
+      return;
+    }
     
     let content = "";
     let filename = "";
     let mimeType = "text/plain";
 
-    const timestamp = new Date().toISOString().replace(/T/, " ").replace(/\..+/, "") + " UTC";
-
-    if (format === "txt") {
-      filename = `clinical_summary_${activePatient.id}.txt`;
-      mimeType = "text/plain";
-      content = `======================================================================
-         APEXHEALTH CLINICAL DECISION PORTAL - DISCHARGE DOSSIER
-         CONFIDENTIAL MEDICAL RECORD - RESTRICTED ACCESS (HIPAA RULES APPLY)
-======================================================================
-
-GENERATED TIMESTAMP : ${timestamp}
-SIMULATED ENVIRONMENT: ApexHealth AI Sandbox Node
-EHR REGISTRY RECORD : ${activePatient.id}
-
-----------------------------------------------------------------------
-1. PATIENT DEMOGRAPHICS & CLINICAL METRICS
-----------------------------------------------------------------------
-Patient Full Name  : ${activePatient.name}
-Patient Age / Sex  : ${activePatient.age} years / ${activePatient.gender}
-Admitting Diagnosis : ${activePatient.diagnosis}
-Duration of Stay   : ${activePatient.lengthOfStay} Days
-Index Admission    : ${activePatient.admissionDate}
-Discharge Date     : ${activePatient.dischargeDate}
-Prior Hospitalizations (12M): ${activePatient.previousAdmissions}
-
-----------------------------------------------------------------------
-2. RE-ESTIMATED CLINICAL BIOMARKERS
-----------------------------------------------------------------------
-Blood Pressure     : ${activePatient.vitals.bloodPressure || "120/80 mmHg"}
-Heart Rate         : ${activePatient.vitals.heartRate || "N/A"} bpm
-Oxygen Saturation  : ${activePatient.vitals.oxygenSat || "N/A"}%
-HbA1c Level        : ${activePatient.vitals.hba1c || "N/A"}
-LVEF Score         : ${activePatient.vitals.lvef ? `${activePatient.vitals.lvef}%` : "N/A"}
-FEV1 Lung Volume   : ${activePatient.vitals.fev1 ? `${activePatient.vitals.fev1}%` : "N/A"}
-
-----------------------------------------------------------------------
-3. RISK ASSESSMENT MATRIX (30-DAY CRITICAL READMISSION WINDOW)
-----------------------------------------------------------------------
-Algorithmic Risk % : ${activePatient.riskScore}% Probability of Readmission
-Risk Stratum Card  : ${activePatient.riskCategory.toUpperCase()} ALERT LEVEL
-Comorbid Load Count: ${activePatient.comorbidities.length} chronic conditions
-Chronic Diseases   : ${activePatient.comorbidities.join(", ") || "None Logged"}
-
-----------------------------------------------------------------------
-4. PRESCRIBED DISCHARGE MEDICATION THERAPY (GDMT)
-----------------------------------------------------------------------
-Active Prescriptions:
-${activePatient.dischargeMeds.map((med, idx) => `  [${idx + 1}] ${med}`).join("\n") || "  No discharge medications prescribed."}
-
-----------------------------------------------------------------------
-5. DISCHARGE CLINICAL INSTRUCTIONS & CASEWORKER SUMMARY
-----------------------------------------------------------------------
-Clinical Synopsis  : ${activePatient.notes || "No acute discharge notes provided by attending physician."}
-
-======================================================================
-              END OF MEDICAL DISCHARGE RECORD REPORT
-======================================================================
-`;
-    } else if (format === "csv") {
+    if (format === "csv") {
       filename = `patient_summary_${activePatient.id}.csv`;
       mimeType = "text/csv";
       const headers = ["Patient ID", "Name", "Age", "Gender", "Diagnosis", "LOS_Days", "Previous_Admissions", "Risk_Score", "Risk_Category", "Discharge_Date"].join(",");
@@ -335,7 +737,7 @@ Clinical Synopsis  : ${activePatient.notes || "No acute discharge notes provided
     URL.revokeObjectURL(url);
 
     // Audit Log & Toast Notification
-    const formatLabel = format === "txt" ? "Clinical Report PDF/Text" : format === "csv" ? "Analytical CSV Record" : "Standard HL7 FHIR JSON";
+    const formatLabel = format === "csv" ? "Analytical CSV Record" : "Standard HL7 FHIR JSON";
     onAddAuditLog("Extracted Patient Summary", `Extracted discharge dossier of ${activePatient.name} (${activePatient.id}) in ${formatLabel} format.`);
     triggerNotification(
       "Report Extracted Successfully", 
@@ -449,12 +851,12 @@ Clinical Synopsis  : ${activePatient.notes || "No acute discharge notes provided
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:block">Extract:</span>
                     <button
-                      onClick={() => handleExtractReport("txt")}
+                      onClick={() => handleExtractReport("pdf")}
                       className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors"
-                      title="Download full clinical formatted text dossier"
+                      title="Download full Clinical PDF report"
                     >
                       <FileText className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="hidden sm:inline">Clinical Report</span>
+                      <span className="hidden sm:inline">Clinical Report (PDF)</span>
                     </button>
                     <button
                       onClick={() => handleExtractReport("csv")}
@@ -738,12 +1140,12 @@ Clinical Synopsis  : ${activePatient.notes || "No acute discharge notes provided
                                 )}
                               </button>
                               <button
-                                onClick={() => downloadSummaryTxt(activePatient, aiSummaries[activePatient.id])}
+                                onClick={() => generatePDFReport(activePatient, aiSummaries[activePatient.id])}
                                 className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors cursor-pointer"
-                                title="Download as .txt file"
+                                title="Download beautifully formatted PDF report"
                               >
-                                <Download className="w-3 h-3" />
-                                <span>Download</span>
+                                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                                <span>Download PDF</span>
                               </button>
                               <button
                                 onClick={() => handleGenerateSummary(activePatient)}
