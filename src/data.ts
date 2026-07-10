@@ -127,6 +127,55 @@ export function calculateReadmissionRisk(
   return { score, category, riskFactors: factors };
 }
 
+/**
+ * Feature Engineering Pipeline
+ * Derives clinical features from raw patient inputs to enrich the EHR record.
+ * These engineered features are used for analysis, insights, and visualization.
+ */
+export function enrichPatientFeatures(patient: Patient): Patient {
+  // BMI Calculation: BMI = weight(kg) / (height(m))^2
+  let bmi: number | undefined;
+  if (patient.vitals.height && patient.vitals.weight) {
+    const heightM = patient.vitals.height / 100;
+    bmi = parseFloat((patient.vitals.weight / (heightM * heightM)).toFixed(1));
+  }
+
+  // Age Group Categorization
+  let ageGroup: Patient["ageGroup"];
+  if (patient.age < 18) {
+    ageGroup = "Pediatric (<18)";
+  } else if (patient.age < 65) {
+    ageGroup = "Adult (18-64)";
+  } else {
+    ageGroup = "Geriatric (≥65)";
+  }
+
+  // Length of Stay Category
+  let lengthOfStayCategory: Patient["lengthOfStayCategory"];
+  if (patient.lengthOfStay <= 2) {
+    lengthOfStayCategory = "Short Stay (≤2 days)";
+  } else if (patient.lengthOfStay <= 7) {
+    lengthOfStayCategory = "Moderate Stay (3-7 days)";
+  } else {
+    lengthOfStayCategory = "Extended Stay (≥8 days)";
+  }
+
+  // Total Comorbidity Count
+  const totalComorbidities = patient.comorbidities.length;
+
+  // Average Heart Rate (use existing heart rate as baseline, or estimate from vitals)
+  const averageHeartRate = patient.vitals.heartRate;
+
+  return {
+    ...patient,
+    bmi,
+    ageGroup,
+    lengthOfStayCategory,
+    totalComorbidities,
+    averageHeartRate,
+  };
+}
+
 // Initial Synthetic Patients List
 export const INITIAL_PATIENTS: Patient[] = [
   {
@@ -138,7 +187,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 6,
     previousAdmissions: 2,
     comorbidities: ["Hypertension", "Chronic Kidney Disease Stage III", "Hyperlipidemia"],
-    vitals: { lvef: 35, bloodPressure: "135/82", heartRate: 78, oxygenSat: 94 },
+    vitals: { lvef: 35, bloodPressure: "135/82", heartRate: 78, oxygenSat: 94, height: 175, weight: 92 },
     dischargeMeds: ["Carvedilol 12.5mg BID", "Lisinopril 20mg daily", "Furosemide 40mg daily", "Atorvastatin 40mg daily"],
     riskScore: 78,
     riskCategory: "High",
@@ -155,7 +204,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 4,
     previousAdmissions: 0,
     comorbidities: ["Obesity Class II", "Neuropathy"],
-    vitals: { hba1c: "9.2%", bloodPressure: "128/78", heartRate: 72, oxygenSat: 98 },
+    vitals: { hba1c: "9.2%", bloodPressure: "128/78", heartRate: 72, oxygenSat: 98, height: 163, weight: 98 },
     dischargeMeds: ["Metformin 1000mg BID", "Jardiance 10mg daily", "Gabapentin 300mg QHS"],
     riskScore: 32,
     riskCategory: "Medium",
@@ -172,7 +221,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 9,
     previousAdmissions: 3,
     comorbidities: ["Osteoporosis", "Coronary Artery Disease", "Depression"],
-    vitals: { fev1: 38, oxygenSat: 89, bloodPressure: "115/70", heartRate: 85 },
+    vitals: { fev1: 38, oxygenSat: 89, bloodPressure: "115/70", heartRate: 85, height: 158, weight: 52 },
     dischargeMeds: ["Symbicort 160/4.5 2 puffs BID", "Spiriva Respimat 2.5mcg daily", "Prednisone 10mg daily taper", "Amlodipine 5mg daily"],
     riskScore: 92,
     riskCategory: "High",
@@ -189,7 +238,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 3,
     previousAdmissions: 0,
     comorbidities: ["Asthma"],
-    vitals: { oxygenSat: 95, bloodPressure: "120/80", heartRate: 76 },
+    vitals: { oxygenSat: 95, bloodPressure: "120/80", heartRate: 76, height: 178, weight: 74 },
     dischargeMeds: ["Amoxicillin-Clavulanate 875/125mg BID", "Albuterol HFA inhaler PRN"],
     riskScore: 18,
     riskCategory: "Low",
@@ -206,7 +255,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 5,
     previousAdmissions: 1,
     comorbidities: ["Hypertension", "Type 2 Diabetes"],
-    vitals: { lvef: 48, hba1c: "7.8%", bloodPressure: "148/90", heartRate: 80, oxygenSat: 93 },
+    vitals: { lvef: 48, hba1c: "7.8%", bloodPressure: "148/90", heartRate: 80, oxygenSat: 93, height: 165, weight: 76 },
     dischargeMeds: ["Metoprolol Succinate 50mg daily", "Sacubitril-Valsartan 49-51mg BID", "Empagliflozin 10mg daily"],
     riskScore: 54,
     riskCategory: "Medium",
@@ -223,7 +272,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     lengthOfStay: 4,
     previousAdmissions: 1,
     comorbidities: ["Hypertension", "Gout"],
-    vitals: { fev1: 55, oxygenSat: 92, bloodPressure: "130/80", heartRate: 82 },
+    vitals: { fev1: 55, oxygenSat: 92, bloodPressure: "130/80", heartRate: 82, height: 180, weight: 88 },
     dischargeMeds: ["Advair Diskus 250/50 1 puff BID", "Allopurinol 100mg daily", "Lisinopril 10mg daily"],
     riskScore: 48,
     riskCategory: "Medium",
@@ -231,7 +280,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     dischargeDate: "2026-06-26",
     notes: "COPD exacerbation triggered by environmental dust. Discharged on standard maintenance therapy.",
   }
-];
+].map(enrichPatientFeatures);
 
 // Historical and Forecast Outbreak Data
 export const DISEASE_FORECASTS: DiseaseForecast[] = [

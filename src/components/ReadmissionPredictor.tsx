@@ -98,6 +98,8 @@ export default function ReadmissionPredictor({
   const [vitalFEV1, setVitalFEV1] = useState<number | undefined>(undefined);
   const [vitalO2Sat, setVitalO2Sat] = useState<number | undefined>(undefined);
   const [vitalBP, setVitalBP] = useState("120/80");
+  const [vitalHeight, setVitalHeight] = useState<number | undefined>(undefined);
+  const [vitalWeight, setVitalWeight] = useState<number | undefined>(undefined);
   
   // Model output state
   const [computedResult, setComputedResult] = useState<{
@@ -141,6 +143,8 @@ export default function ReadmissionPredictor({
     setVitalFEV1(p.vitals.fev1);
     setVitalO2Sat(p.vitals.oxygenSat);
     setVitalBP(p.vitals.bloodPressure || "120/80");
+    setVitalHeight(p.vitals.height);
+    setVitalWeight(p.vitals.weight);
 
     // Pre-calculate
     const res = calculateReadmissionRisk(
@@ -203,7 +207,7 @@ export default function ReadmissionPredictor({
       lengthOfStay: formLengthOfStay,
       previousAdmissions: formPrevAdmissions,
       comorbidities: formComorbidities,
-      vitals: { hba1c: vitalHbA1c, lvef: vitalLVEF, fev1: vitalFEV1, oxygenSat: vitalO2Sat, bloodPressure: vitalBP },
+      vitals: { hba1c: vitalHbA1c, lvef: vitalLVEF, fev1: vitalFEV1, oxygenSat: vitalO2Sat, bloodPressure: vitalBP, height: vitalHeight, weight: vitalWeight },
       dischargeMeds: activePatient?.dischargeMeds || ["Guideline-directed medical therapy (GDMT)"],
       riskScore: calculated.score,
       riskCategory: calculated.category,
@@ -241,6 +245,8 @@ export default function ReadmissionPredictor({
     setVitalFEV1(undefined);
     setVitalO2Sat(95);
     setVitalBP("120/80");
+    setVitalHeight(undefined);
+    setVitalWeight(undefined);
     setComputedResult(null);
   };
 
@@ -509,6 +515,33 @@ export default function ReadmissionPredictor({
                     className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
+
+                {/* Height & Weight — for BMI Feature Engineering */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Height (cm) <span className="text-blue-500">— BMI</span></label>
+                  <input
+                    type="number"
+                    min={100}
+                    max={250}
+                    value={vitalHeight || ""}
+                    onChange={(e) => setVitalHeight(parseInt(e.target.value) || undefined)}
+                    placeholder="e.g. 175"
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Weight (kg) <span className="text-blue-500">— BMI</span></label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={300}
+                    value={vitalWeight || ""}
+                    onChange={(e) => setVitalWeight(parseInt(e.target.value) || undefined)}
+                    placeholder="e.g. 82"
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -606,6 +639,67 @@ export default function ReadmissionPredictor({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Feature Engineering Breakdown Panel */}
+        {computedResult && (
+          <div className="bg-gradient-to-br from-slate-50 to-blue-50/30 border border-blue-200/60 shadow-sm rounded-xl p-5 space-y-4">
+            <div className="border-b border-blue-200/40 pb-3">
+              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                Feature Engineering Pipeline — Derived Clinical Features
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">Engineered features computed from raw patient inputs. These improve model accuracy and explainability.</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {[
+                {
+                  label: "BMI",
+                  raw: vitalHeight && vitalWeight ? `${vitalHeight}cm / ${vitalWeight}kg` : "—",
+                  engineered: vitalHeight && vitalWeight
+                    ? (() => { const h = vitalHeight / 100; const b = vitalWeight / (h * h); return `${b.toFixed(1)} kg/m²`; })()
+                    : "N/A",
+                  formula: "w(kg) / h(m)²",
+                  color: "bg-blue-100 text-blue-800",
+                },
+                {
+                  label: "Age Group",
+                  raw: `${formAge} years`,
+                  engineered: formAge < 18 ? "Pediatric (<18)" : formAge < 65 ? "Adult (18–64)" : "Geriatric (≥65)",
+                  formula: "Threshold bins",
+                  color: "bg-purple-100 text-purple-800",
+                },
+                {
+                  label: "Stay Category",
+                  raw: `${formLengthOfStay} days`,
+                  engineered: formLengthOfStay <= 2 ? "Short Stay (≤2d)" : formLengthOfStay <= 7 ? "Moderate (3–7d)" : "Extended (≥8d)",
+                  formula: "Ordinal binning",
+                  color: "bg-amber-100 text-amber-800",
+                },
+                {
+                  label: "Comorbidity Count",
+                  raw: `${formComorbidities.length} condition(s)`,
+                  engineered: formComorbidities.length > 3 ? "Severe Multimorbidity" : formComorbidities.length > 1 ? "Comorbid Burden" : "Low Burden",
+                  formula: "count(comorbidities)",
+                  color: "bg-rose-100 text-rose-800",
+                },
+                {
+                  label: "Avg Heart Rate",
+                  raw: vitalO2Sat ? `O2 Sat: ${vitalO2Sat}%` : "—",
+                  engineered: activePatient?.vitals.heartRate ? `${activePatient.vitals.heartRate} bpm` : "—",
+                  formula: "From vitals record",
+                  color: "bg-emerald-100 text-emerald-800",
+                },
+              ].map((feat) => (
+                <div key={feat.label} className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-1.5">
+                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{feat.label}</p>
+                  <p className={`text-[10px] font-bold px-2 py-0.5 rounded-full self-start ${feat.color}`}>{feat.engineered}</p>
+                  <p className="text-[9px] text-slate-400">Raw: {feat.raw}</p>
+                  <p className="text-[9px] text-slate-300 font-mono border-t border-slate-100 pt-1 mt-auto">{feat.formula}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}

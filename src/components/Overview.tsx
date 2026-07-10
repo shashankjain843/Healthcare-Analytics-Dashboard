@@ -57,6 +57,23 @@ export default function Overview({
   const readmissionRate = ((patients.filter(p => p.riskScore >= 50).length / totalPatients) * 100).toFixed(1);
   const activeSurges = forecasts.filter(f => f.alertLevel === "High").length;
 
+  // ── Derived KPIs (Feature-Engineered) ──────────────────────────────────────
+  const avgAge = totalPatients > 0
+    ? (patients.reduce((sum, p) => sum + p.age, 0) / totalPatients).toFixed(1)
+    : "0";
+
+  const avgLengthOfStay = totalPatients > 0
+    ? (patients.reduce((sum, p) => sum + p.lengthOfStay, 0) / totalPatients).toFixed(1)
+    : "0";
+
+  // Bed Occupancy: assume 20 total beds for simulation; occupied = patients admitted in last 30 days
+  const totalBeds = 20;
+  const occupiedBeds = Math.min(totalPatients, totalBeds);
+  const bedOccupancyRate = ((occupiedBeds / totalBeds) * 100).toFixed(0);
+
+  // Mortality Rate Estimate: Risk-adjusted (high risk patients × 3% mortality estimate)
+  const mortalityRateEstimate = ((highRiskPatientsCount * 3) / totalPatients).toFixed(1);
+
   // Pie chart data for risk cohorts
   const riskCohortData = [
     { name: "High Risk (≥60%)", value: highRiskPatientsCount, color: "#f43f5e" }, // rose-500
@@ -81,6 +98,73 @@ export default function Overview({
     log.details.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // KPI Card config for all 7 metrics
+  const kpiCards = [
+    {
+      id: "total-patients",
+      label: "Total Patients",
+      value: String(totalPatients),
+      subLabel: "Active EHR profiles",
+      badge: "↑ Active",
+      badgeColor: "text-emerald-600",
+      onClick: undefined,
+    },
+    {
+      id: "avg-age",
+      label: "Average Age",
+      value: `${avgAge} yrs`,
+      subLabel: "Mean patient age in cohort",
+      badge: "Geriatric Risk",
+      badgeColor: "text-amber-600",
+      onClick: undefined,
+    },
+    {
+      id: "readmission-rate",
+      label: "Readmission Rate",
+      value: `${readmissionRate}%`,
+      subLabel: "30-day predicted risk (≥50%)",
+      badge: `${highRiskPatientsCount} Critical`,
+      badgeColor: "text-rose-600",
+      onClick: () => onNavigateTo("readmissions"),
+    },
+    {
+      id: "bed-occupancy",
+      label: "Bed Occupancy Rate",
+      value: `${bedOccupancyRate}%`,
+      subLabel: `${occupiedBeds}/${totalBeds} beds occupied`,
+      badge: bedOccupancyRate >= "85" ? "⚠ High" : "Stable",
+      badgeColor: parseInt(bedOccupancyRate) >= 85 ? "text-rose-600" : "text-emerald-600",
+      onClick: undefined,
+    },
+    {
+      id: "avg-los",
+      label: "Avg Length of Stay",
+      value: `${avgLengthOfStay} days`,
+      subLabel: "Mean inpatient stay duration",
+      badge: "Discharge Metric",
+      badgeColor: "text-blue-600",
+      onClick: undefined,
+    },
+    {
+      id: "mortality-rate",
+      label: "Mortality Rate (Est.)",
+      value: `${mortalityRateEstimate}%`,
+      subLabel: "Risk-adjusted 30-day estimate",
+      badge: "Clinical KPI",
+      badgeColor: "text-slate-500",
+      onClick: undefined,
+    },
+    {
+      id: "high-risk",
+      label: "High Risk Patients",
+      value: String(highRiskPatientsCount),
+      subLabel: "Immediate follow-up required",
+      badge: `${activeSurges} Outbreaks Active`,
+      badgeColor: "text-amber-600",
+      onClick: () => onNavigateTo("forecaster"),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -95,54 +179,34 @@ export default function Overview({
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Card 1 */}
-        <div className="bg-white p-5 border border-slate-200 rounded-xl shadow-sm flex flex-col justify-between">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Active Cohort</p>
-          <div className="flex items-end justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900">{totalPatients}</span>
-            <span className="text-emerald-500 text-xs font-bold">↑ Active</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-2">Live patient profiles registered</p>
-        </div>
-
-        {/* Card 2 */}
-        <button 
-          onClick={() => onNavigateTo("readmissions")}
-          className="bg-white p-5 border border-slate-200 rounded-xl shadow-sm flex flex-col justify-between text-left hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group"
-        >
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Estimated Readmit Rate</p>
-          <div className="flex items-end justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900">{readmissionRate}%</span>
-            <span className="text-rose-500 text-xs font-bold font-mono">{highRiskPatientsCount} Critical</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-2">XGBoost 30-day predicted risk</p>
-        </button>
-
-        {/* Card 3 */}
-        <button
-          onClick={() => onNavigateTo("forecaster")}
-          className="bg-white p-5 border border-slate-200 rounded-xl shadow-sm flex flex-col justify-between text-left hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group"
-        >
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 group-hover:text-blue-600 transition-colors">Outbreak Warning Status</p>
-          <div className="flex items-end justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900">{activeSurges} Alerts</span>
-            <span className="text-amber-500 text-xs font-bold">Elevated</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-2">Active pathogens surveillance</p>
-        </button>
-
-        {/* Card 4 */}
-        <div className="bg-white p-5 border border-slate-200 rounded-xl shadow-sm flex flex-col justify-between">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Predictive Model F1 Score</p>
-          <div className="flex items-end justify-between mt-2">
-            <span className="text-3xl font-extrabold text-slate-900">87.4%</span>
-            <span className="text-emerald-500 text-xs font-bold">↑ 4.5%</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-2">XGBoost & TabNet validated</p>
-        </div>
+      {/* 7 KPI Cards Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        {kpiCards.map((card) => {
+          const Tag = card.onClick ? "button" : "div";
+          return (
+            <Tag
+              key={card.id}
+              id={`kpi-${card.id}`}
+              onClick={card.onClick}
+              className={`bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex flex-col justify-between text-left transition-all ${
+                card.onClick ? "hover:border-blue-400 hover:shadow-md cursor-pointer group" : ""
+              }`}
+            >
+              <p className={`text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1 ${card.onClick ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+                {card.label}
+              </p>
+              <div className="mt-1">
+                <span className="text-2xl font-extrabold text-slate-900 leading-none">{card.value}</span>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-[9px] text-slate-400 leading-tight">{card.subLabel}</p>
+                <span className={`text-[9px] font-bold ${card.badgeColor}`}>{card.badge}</span>
+              </div>
+            </Tag>
+          );
+        })}
       </div>
+
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -187,6 +251,15 @@ export default function Overview({
               </div>
             ))}
           </div>
+          {/* Chart Insight Panel */}
+          <div className="mt-3 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+            <p className="text-[10px] text-blue-800 font-semibold uppercase tracking-wide mb-1">📊 Clinical Insight</p>
+            <p className="text-[10px] text-blue-700 leading-relaxed">
+              {highRiskPatientsCount > 0
+                ? `${highRiskPatientsCount} patient(s) are classified as HIGH RISK (≥60%) and require priority discharge follow-up to reduce hospital readmission burden.`
+                : "All patients are currently at low-to-moderate risk. Continue standard monitoring protocols."}
+            </p>
+          </div>
         </div>
 
         {/* Diagnosis Demographics (Bar) */}
@@ -211,6 +284,13 @@ export default function Overview({
           </div>
           <div className="text-[11px] text-slate-400 italic text-center mt-2">
             * Note: Patient categories map directly to primary hospital admission ICD-10 codings.
+          </div>
+          {/* Chart Insight Panel */}
+          <div className="mt-2 p-2.5 bg-amber-50 border border-amber-100 rounded-lg">
+            <p className="text-[10px] text-amber-800 font-semibold uppercase tracking-wide mb-1">📊 Visualization Insight</p>
+            <p className="text-[10px] text-amber-700 leading-relaxed">
+              Diagnosis distribution helps hospital administrators allocate specialist resources. Departments with the highest patient volumes may require additional staffing or dedicated ward capacity.
+            </p>
           </div>
         </div>
       </div>

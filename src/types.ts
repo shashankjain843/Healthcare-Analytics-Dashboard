@@ -10,6 +10,8 @@ export interface PatientVitals {
   lvef?: number; // Left Ventricular Ejection Fraction (%) for Heart Failure
   fev1?: number; // Forced Expiratory Volume (%) for COPD
   oxygenSat?: number; // Oxygen Saturation (%)
+  height?: number; // Height in cm (for BMI)
+  weight?: number; // Weight in kg (for BMI)
 }
 
 export interface Patient {
@@ -31,6 +33,13 @@ export interface Patient {
   genderOriginal?: "Male" | "Female" | "Other";
   nameOriginal?: string;
   isAnonymized?: boolean;
+  
+  // Engineered Features
+  bmi?: number;
+  totalComorbidities?: number;
+  lengthOfStayCategory?: "Short Stay (≤2 days)" | "Moderate Stay (3-7 days)" | "Extended Stay (≥8 days)";
+  ageGroup?: "Pediatric (<18)" | "Adult (18-64)" | "Geriatric (≥65)";
+  averageHeartRate?: number;
 }
 
 export interface ForecastDataPoint {
