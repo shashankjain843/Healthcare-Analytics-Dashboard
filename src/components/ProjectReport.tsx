@@ -993,14 +993,14 @@ Final Score = clamp(sum, 5, 95)
       </div>
 
       {/* ── Print CTA ── */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex items-center justify-between gap-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <p className="font-bold text-blue-900 text-sm">Ready to export this report?</p>
           <p className="text-blue-700 text-xs mt-0.5">Click the button → Print dialog opens → Save as PDF</p>
         </div>
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all flex-shrink-0 cursor-pointer"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all flex-shrink-0 cursor-pointer justify-center"
         >
           <Printer className="w-4 h-4" />
           Print / PDF
