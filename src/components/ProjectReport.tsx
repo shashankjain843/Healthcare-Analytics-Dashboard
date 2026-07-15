@@ -15,6 +15,9 @@ import {
   Layers,
   CheckCircle,
   ArrowRight,
+  Search,
+  RefreshCw,
+  Sliders,
 } from "lucide-react";
 import { Patient, UserRole } from "../types";
 
@@ -222,8 +225,219 @@ function buildPrintHTML(patientCount: number, highRiskCount: number): string {
     State Update → localStorage Persist → Audit Log Entry</code>
   </p>
 
+  <!-- ═══════════════ DATA COLLECTION ═══════════════ -->
+  <h2>4. Data Collection &amp; Schema</h2>
+  <p>
+    The system utilizes a structured Electronic Health Record (EHR) database model designed to represent
+    clinical patient charts. The dataset is populated with synthetic clinical records that simulate real-world EHR data
+    derived from major clinical research databases like MIMIC-III (Medical Information Mart for Intensive Care)
+    and eICU. It consists of multiple clinical dimensions across patient demographics, physiological vital signs,
+    comorbidities, and pharmacological treatments.
+  </p>
+  <p>
+    The database currently tracks <strong>\${patientCount} active records</strong>. The clinical schema and its corresponding
+    data types are detailed below:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field Name</th>
+        <th>Data Type</th>
+        <th>Description &amp; Context</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>id</code></td>
+        <td>String</td>
+        <td>Unique patient identifier (e.g., "PAT-83291").</td>
+      </tr>
+      <tr>
+        <td><code>name</code></td>
+        <td>String</td>
+        <td>Patient's full name (Primary Protected Health Information - PHI).</td>
+      </tr>
+      <tr>
+        <td><code>age</code></td>
+        <td>Number</td>
+        <td>Patient's age in years (used to identify pediatric or geriatric cohorts).</td>
+      </tr>
+      <tr>
+        <td><code>gender</code></td>
+        <td>String</td>
+        <td>Biological sex ("Male" | "Female" | "Other").</td>
+      </tr>
+      <tr>
+        <td><code>diagnosis</code></td>
+        <td>String</td>
+        <td>Primary admitting diagnosis/ICD-10 category (e.g., CHF, COPD, Diabetes, Pneumonia).</td>
+      </tr>
+      <tr>
+        <td><code>lengthOfStay</code></td>
+        <td>Number</td>
+        <td>Duration of hospital admission in days.</td>
+      </tr>
+      <tr>
+        <td><code>previousAdmissions</code></td>
+        <td>Number</td>
+        <td>Count of inpatient admissions within the past 12 months.</td>
+      </tr>
+      <tr>
+        <td><code>comorbidities</code></td>
+        <td>Array[String]</td>
+        <td>List of secondary chronic conditions (e.g., Hypertension, Asthma, Obesity).</td>
+      </tr>
+      <tr>
+        <td><code>vitals</code></td>
+        <td>Object</td>
+        <td>Clinical biomarkers (LVEF %, HbA1c %, FEV1 %, O2 Saturation %, BP mmHg, Height cm, Weight kg).</td>
+      </tr>
+      <tr>
+        <td><code>dischargeMeds</code></td>
+        <td>Array[String]</td>
+        <td>Prescribed outpatient medications on discharge.</td>
+      </tr>
+      <tr>
+        <td><code>riskScore</code></td>
+        <td>Number</td>
+        <td>Calculated 30-day readmission risk probability (0 to 100%).</td>
+      </tr>
+      <tr>
+        <td><code>riskCategory</code></td>
+        <td>String</td>
+        <td>Stratified risk level ("High" | "Medium" | "Low").</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ═══════════════ DATA UNDERSTANDING ═══════════════ -->
+  <h2>5. Data Understanding (Exploratory Data Analysis - EDA)</h2>
+  <p>
+    An in-depth Exploratory Data Analysis (EDA) was performed on the cohort data to identify distributions, anomalies,
+    and key clinical indicators:
+  </p>
+  <ul>
+    <li>
+      <strong>Missing Value Analysis:</strong> Clinical EHR datasets naturally suffer from missing parameters because diagnostic
+      tests are condition-specific. In this dataset, <code>lvef</code> (Ejection Fraction) is only present for Congestive Heart
+      Failure patients; <code>hba1c</code> (Glycated Hemoglobin) is only captured for patients with Type 2 Diabetes; and <code>fev1</code>
+      (Forced Expiratory Volume) is isolated to COPD patients. Height and weight are optional parameters used to calculate BMI.
+      The system handles these missing values gracefully, treating them as non-applicable clinical fields rather than data omissions.
+    </li>
+    <li>
+      <strong>Duplicate Record Checking:</strong> Unique patient ID checks are enforced at entry. If a patient with an existing
+      ID is added, the system rejects it, preventing duplicate count inflation in analytical metrics.
+    </li>
+    <li>
+      <strong>Outliers &amp; Vital Anomalies:</strong> Vital outliers are clinically relevant distress indicators. Heart rate
+      values above 120 bpm (tachycardia) or below 55 bpm (bradycardia), O2 saturation below 92% (respiratory distress), and
+      systolic blood pressure above 160 mmHg (hypertensive crisis) are flagged as risk-contributing outliers. Additionally,
+      extreme lengths of stay (e.g., &gt;8 days) represent clinical severity outliers.
+    </li>
+    <li>
+      <strong>Distributions:</strong> The dataset is representative of typical high-readmission cohorts, with age distribution
+      skewed towards geriatric populations (mean age: ~65-75 years) and a higher frequency of chronic cardiopulmonary diagnoses.
+    </li>
+    <li>
+      <strong>Important Observations:</strong> Prior admissions count is the single strongest statistical predictor
+      for future readmissions. Combined with geriatric status and severe multimorbidity (comorbidity count &gt; 3), the risk
+      of readmission within 30 days rises exponentially.
+    </li>
+  </ul>
+
+  <!-- ═══════════════ DATA CLEANING ═══════════════ -->
+  <h2>6. Data Preprocessing &amp; Cleaning</h2>
+  <p>
+    To prepare raw clinical records for analytics, forecasting, and risk prediction, several cleaning and transformation
+    pipelines are executed:
+  </p>
+  <ul>
+    <li>
+      <strong>Safe-Harbor PII Anonymization (HIPAA Compliance):</strong> Before clinical records can be exported or reviewed for
+      training purposes, all Protected Health Information (PHI) is sanitized. A dynamic toggle applies Safe-Harbor de-identification,
+      redacting full names to secure initials (e.g., "Clarissa Vance" becomes "C. V. [REDACTED_SAFE_HARBOR]") and hiding patient IDs
+      to protect identity.
+    </li>
+    <li>
+      <strong>Handling Missing Values &amp; Fallbacks:</strong> Incomplete records are handled using clinical defaults or conditional imputation.
+      Blood pressure is set to a physiological default of "120/80" mmHg if missing, and conditional branches prevent missing values
+      from causing calculations to crash. For BMI calculations, missing heights/weights default to median population values or omit
+      the feature, ensuring the dashboard remains operational.
+    </li>
+    <li>
+      <strong>Feature Engineering Pipeline:</strong> Continuous variables are transformed into engineered clinical categories.
+      Raw height and weight are combined using the BMI formula (<code>weight(kg) / height(m)²</code>). Age is discretized into
+      Pediatric, Adult, and Geriatric bins. Length of stay is converted into Short, Moderate, and Extended stay categories.
+      These engineered features enrich the data, making it ready for visualization and ML-inspired classifiers.
+    </li>
+  </ul>
+
+  <!-- ═══════════════ DATA VISUALIZATION ═══════════════ -->
+  <h2>7. Data Visualization &amp; Analytical Insights</h2>
+  <p>
+    The dashboard utilizes interactive graphical charts to convert raw tabular data into actionable clinical insights:
+  </p>
+  <ul>
+    <li>
+      <strong>Risk Cohort Distribution (Pie Chart):</strong> Renders the relative proportion of High, Medium, and Low risk
+      patients using color-coded segments. This visualization helps administrators identify the total percentage of highly
+      vulnerable patients requiring post-discharge coordination.
+    </li>
+    <li>
+      <strong>Diagnosis Demographics (Bar Chart):</strong> Visualizes the patient count across different primary admitting
+      diagnoses. It allows administrators to see which clinical department (e.g., Cardiology, Pulmonology) is carrying the
+      highest patient load, aiding in staffing and resource allocation.
+    </li>
+    <li>
+      <strong>Epidemiological Disease Forecaster (Composed Area Chart):</strong> Plots historical cases along with future
+      forecasts for major infectious diseases (Influenza, COVID-19, Dengue, Norovirus) across regions. The inclusion of shaded
+      upper/lower confidence intervals visually communicates the statistical uncertainty of predictions, allowing planners to prepare for bed surges.
+    </li>
+    <li>
+      <strong>Kaplan-Meier Survival Curves (Line Chart):</strong> Compares recovery speeds between standard care and experimental
+      protocols. By plotting recovery probability over time, clinicians gain evidence-based insights into which treatment protocol
+      is statistically superior (quantified by Hazard Ratios and Log-Rank P-Values).
+    </li>
+  </ul>
+
+  <!-- ═══════════════ DASHBOARD DETAILS ═══════════════ -->
+  <h2>8. Dashboard Features &amp; Business Use-Cases</h2>
+  <p>
+    The main clinical command-center provides real-time indicators and controls designed for hospital administrators and physicians:
+  </p>
+  <ul>
+    <li>
+      <strong>Dynamic KPIs:</strong>
+      <ul>
+        <li><em>Total Active Cohort:</em> Number of active inpatient profiles.</li>
+        <li><em>Estimated Readmission Rate:</em> Percentage of patients at high risk of 30-day readmission (score &gt;= 50%).</li>
+        <li><em>Bed Occupancy Rate:</em> Simulates real-time hospital occupancy, warning administrators of resource bottlenecks if occupancy exceeds 85%.</li>
+        <li><em>Avg Length of Stay (LOS):</em> Monitors bed turnover efficiency to reduce operational costs.</li>
+        <li><em>Mortality Rate:</em> High-risk adjusted 30-day mortality forecast.</li>
+        <li><em>High Risk Patients Count:</em> Absolute count of critical patients requiring immediate attention.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Filters:</strong>
+      <ul>
+        <li><em>Patient Registry Search:</em> Real-time text search filtering by patient names, diagnoses, or IDs.</li>
+        <li><em>HIPAA Audit Log Search:</em> Scans audit trails by username, action types, or status.</li>
+        <li><em>Disease &amp; Region Selectors:</em> Enables local public health planning.</li>
+        <li><em>PII Anonymization Control:</em> Safeguards patient identity with a single click.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Business Use-Cases:</strong>
+      <ul>
+        <li><em>Clinical Risk Management:</em> Prevents costly hospital readmissions by identifying high-risk patients early and generating personalized Gemini AI post-discharge instructions.</li>
+        <li><em>Hospital Resource Optimization:</em> Forecasts seasonal disease outbreaks to scale up bedding, oxygen, and pharmaceutical reserves.</li>
+        <li><em>Compliance Auditing:</em> Guarantees full HIPAA accountability through immutable logs and role-gated access.</li>
+      </ul>
+    </li>
+  </ul>
+
   <!-- ═══════════════ MODULE DESCRIPTIONS ═══════════════ -->
-  <h2>4. Module Descriptions</h2>
+  <h2>9. Module Descriptions</h2>
 
   <div class="module">
     <h3>Module 1: Hospital Overview Dashboard</h3>
@@ -259,7 +473,7 @@ function buildPrintHTML(patientCount: number, highRiskCount: number): string {
   </div>
 
   <!-- ═══════════════ RISK ALGORITHM ═══════════════ -->
-  <h2>5. Readmission Risk Scoring Algorithm</h2>
+  <h2>10. Readmission Risk Scoring Algorithm</h2>
   <p>
     The risk algorithm is a heuristic weighted scoring function inspired by XGBoost/TabNet clinical
     classification models. It accepts 6 input categories and outputs a normalized score in [5, 95]:
@@ -302,7 +516,7 @@ else          → LOW RISK   (routine care)
 ─────────────────────────────────────────────────────</div>
 
   <!-- ═══════════════ HIPAA COMPLIANCE ═══════════════ -->
-  <h2>6. HIPAA Compliance Implementation</h2>
+  <h2>11. HIPAA Compliance Implementation</h2>
   <table>
     <thead><tr><th>HIPAA Requirement</th><th>Implementation in ApexHealth AI</th></tr></thead>
     <tbody>
@@ -315,7 +529,7 @@ else          → LOW RISK   (routine care)
   </table>
 
   <!-- ═══════════════ TECH STACK ═══════════════ -->
-  <h2>7. Technology Stack</h2>
+  <h2>12. Technology Stack</h2>
   <table>
     <thead><tr><th>Technology</th><th>Version</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -334,7 +548,7 @@ else          → LOW RISK   (routine care)
   </table>
 
   <!-- ═══════════════ FUTURE SCOPE ═══════════════ -->
-  <h2>8. Future Scope</h2>
+  <h2>13. Future Scope</h2>
   <ul>
     <li><strong>Backend Database Integration:</strong> Replace localStorage with PostgreSQL or MongoDB for multi-user, server-side data persistence.</li>
     <li><strong>ML Model Training:</strong> Train XGBoost or TabNet model on real hospital datasets (MIMIC-III, eICU) for validated risk prediction.</li>
@@ -347,7 +561,7 @@ else          → LOW RISK   (routine care)
   </ul>
 
   <!-- ═══════════════ REFERENCES ═══════════════ -->
-  <h2>9. References</h2>
+  <h2>14. References</h2>
   <ol>
     <li>HL7 International. <em>FHIR R4 Specification</em>. https://hl7.org/fhir/R4/</li>
     <li>U.S. Department of Health. <em>HIPAA Security Rule</em>. 45 CFR Parts 160 and 164.</li>
@@ -486,6 +700,175 @@ export default function ProjectReport({ patients, currentRole, onAddAuditLog }: 
           <strong>{patients.length} patient profiles</strong>, with <strong>{highRiskCount} classified as High Risk</strong>{" "}
           requiring immediate follow-up.
         </p>
+      </div>
+
+      {/* ── Data Collection & Schema ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
+          <Database className="w-4 h-4 text-blue-600" /> Data Collection &amp; Schema
+        </h3>
+        <p className="text-slate-600 text-sm leading-relaxed mb-4">
+          The dataset is modeled as a clinical inpatient registry, simulating Electronic Health Records (EHR) populated with synthetic patient charts. The structure mimics data patterns from public health research databases like MIMIC-III. It contains <strong>{patients.length} active records</strong> with multiple columns detailing patient diagnostics, demographics, and physiological parameters:
+        </p>
+        <div className="overflow-x-auto border border-slate-100 rounded-lg">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-505 uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <th className="text-left py-2 px-3 font-bold">Field Name</th>
+                <th className="text-left py-2 px-3 font-bold">Data Type</th>
+                <th className="text-left py-2 px-3 font-bold">Description</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-600">
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">id</td>
+                <td className="py-2 px-3">String</td>
+                <td>Unique Patient EHR Identifier (e.g. PAT-83291).</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">name</td>
+                <td className="py-2 px-3">String</td>
+                <td>Patient Full Name (Protected Health Information).</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">age</td>
+                <td className="py-2 px-3">Number</td>
+                <td>Patient age in years (detects pediatric and geriatric risk groups).</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">gender</td>
+                <td className="py-2 px-3">String</td>
+                <td>Biological sex ("Male" | "Female" | "Other").</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">diagnosis</td>
+                <td className="py-2 px-3">String</td>
+                <td>Primary admission diagnosis (e.g. CHF, COPD, Diabetes, Pneumonia).</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">lengthOfStay</td>
+                <td className="py-2 px-3">Number</td>
+                <td>Total inpatient stay duration in days.</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">previousAdmissions</td>
+                <td className="py-2 px-3">Number</td>
+                <td>Number of readmissions within the past 12 months.</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">comorbidities</td>
+                <td className="py-2 px-3">Array[String]</td>
+                <td>Secondary chronic conditions adding to clinical burden.</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-mono font-semibold text-slate-800">vitals</td>
+                <td className="py-2 px-3">Object</td>
+                <td>Biomarkers: LVEF (%), HbA1c (%), FEV1 (%), BP (mmHg), O2 Sat (%), Height (cm), Weight (kg).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Data Understanding (EDA) ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
+          <Search className="w-4 h-4 text-blue-600" /> Data Understanding &amp; EDA Observations
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-600 text-xs leading-relaxed">
+          <div className="space-y-3">
+            <div>
+              <p className="font-bold text-slate-800 text-xs">🔍 Missing Values &amp; Condition-Specific Capturing</p>
+              <p className="mt-0.5 font-normal text-slate-500">Clinical datasets capture metrics selectively. LVEF is recorded only for Congestive Heart Failure patients; HbA1c for Diabetes; and FEV1 for COPD. Missing heights and weights are handled gracefully without application crashes.</p>
+            </div>
+            <div>
+              <p className="font-bold text-slate-800 text-xs">🏥 Outliers &amp; Vital Anomalies</p>
+              <p className="mt-0.5 font-normal text-slate-500">Tachycardia (HR &gt; 120 bpm), bradycardia (HR &lt; 50 bpm), hypoxemia (O2 Sat &lt; 92%), and hypertensive crisis (BP &gt; 160/100 mmHg) represent outliers which act as strong risk-contributing clinical flags in the classifier.</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="font-bold text-slate-800 text-xs">📊 Distribution Analysis</p>
+              <p className="mt-0.5 font-normal text-slate-500">The patient cohort mimics real-world readmission demographics, with age distributions skewed towards geriatric populations (65+) and high prevalence of cardiopulmonary chronic conditions.</p>
+            </div>
+            <div>
+              <p className="font-bold text-slate-800 text-xs">💡 Key Clinical Observations</p>
+              <p className="mt-0.5 font-normal text-slate-500">Prior admissions count is the single strongest indicator of readmission. High risk exponentially escalates when combined with multi-morbidity (comorbidity count &gt; 3) and geriatric age.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Data Preprocessing & Cleaning ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
+          <RefreshCw className="w-4 h-4 text-blue-600" /> Data Preprocessing &amp; Cleaning
+        </h3>
+        <div className="space-y-3 text-slate-600 text-xs leading-relaxed">
+          <div className="flex gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+            <div>
+              <p className="font-bold text-slate-800 text-xs">🔒 Safe-Harbor PII Anonymization</p>
+              <p className="mt-0.5 font-normal text-slate-500">To meet HIPAA Safe-Harbor guidelines, the anonymization toggle redacts full patient names to secure initials (e.g., "Clarissa Vance" → "C. V. [REDACTED_SAFE_HARBOR]") and masks IDs in reports for research/educational use cases.</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+            <div>
+              <p className="font-bold text-slate-800 text-xs">🛠️ Handling Incomplete Records</p>
+              <p className="mt-0.5 font-normal text-slate-500">Missing vitals are clinical omissions, not coding errors. Blood pressure defaults to normal "120/80" mmHg when absent, and conditional expressions clamp or skip missing values in computations rather than crashing.</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+            <div>
+              <p className="font-bold text-slate-800 text-xs">⚙️ Feature Engineering Pipeline</p>
+              <p className="mt-0.5 font-normal text-slate-500">Raw data is enriched with computed features: Body Mass Index (BMI = kg/m²) is derived from height and weight; stay duration is mapped to ordinal categories (Short/Moderate/Extended); and age is categorized into Pediatric, Adult, and Geriatric bins.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Data Visualization & Insights ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
+          <TrendingUp className="w-4 h-4 text-blue-600" /> Data Visualization &amp; Insights
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-slate-600 text-xs leading-relaxed">
+          <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+            <p className="font-bold text-slate-800 text-xs mb-1">🍰 Risk Cohort Pie Chart</p>
+            <p className="font-normal text-slate-500"><strong>Purpose:</strong> Displays active patients across stratified risk bins (High, Med, Low).<br /><strong>Insight:</strong> Helps administrators identify and prioritize high-risk patients (≥60%) needing active transition-of-care services.</p>
+          </div>
+          <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+            <p className="font-bold text-slate-800 text-xs mb-1">📊 Diagnosis Demographics Bar Chart</p>
+            <p className="font-normal text-slate-500"><strong>Purpose:</strong> Shows count of patients across admitting diagnoses.<br /><strong>Insight:</strong> Pinpoints high-load departments (e.g. Cardiopulmonary wards) to optimize bed-counts and physician staffing.</p>
+          </div>
+          <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+            <p className="font-bold text-slate-800 text-xs mb-1">📈 Outbreak Forecasting Shaded Chart</p>
+            <p className="font-normal text-slate-500"><strong>Purpose:</strong> Forecasts infectious pathogen surges across hospital regions.<br /><strong>Insight:</strong> Uses confidence interval shading (upper/lower boundaries) to show prediction margin of error, allowing proactive bedding scale-up.</p>
+          </div>
+          <div className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+            <p className="font-bold text-slate-800 text-xs mb-1">📉 Kaplan-Meier Treatment Curves</p>
+            <p className="font-normal text-slate-500"><strong>Purpose:</strong> Compares patient recovery trajectories across different protocols.<br /><strong>Insight:</strong> Calculates Cox Proportional Hazard Ratios and P-Values to mathematically prove treatment efficacy differences.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Dashboard & Business Use-Cases ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 mb-3">
+          <Sliders className="w-4 h-4 text-blue-600" /> Dashboard &amp; Business Use-Cases
+        </h3>
+        <div className="space-y-3 text-slate-600 text-xs leading-relaxed font-normal text-slate-500">
+          <div>
+            <p className="font-bold text-slate-800 text-xs">🎛️ Dashboard KPIs &amp; Controls</p>
+            <p className="mt-0.5">The Overview features 7 real-time cards (Total active cohort, Estimated Readmission Rate, Bed Occupancy, Avg Stay Duration, Estimated Mortality, High Risk count, and Model F1 score). Filters allow clinicians to query patients by name, filter pathogen trends by region, and review real-time HIPAA audit logs.</p>
+          </div>
+          <div>
+            <p className="font-bold text-slate-800 text-xs">💼 Business Use-Case &amp; Value Delivery</p>
+            <p className="mt-0.5"><strong>Clinical ROI:</strong> Reduces 30-day readmissions by flagging vulnerable discharge cases and utilizing Gemini AI to build tailored diet and care regimens. <strong>Operational Planning:</strong> Outbreak forecasting enables stockpiling resources prior to surges. <strong>Regulatory Compliance:</strong> Role-based access control (RBAC) and detailed audit logs satisfy HIPAA compliance standards.</p>
+          </div>
+        </div>
       </div>
 
       {/* ── Modules ── */}

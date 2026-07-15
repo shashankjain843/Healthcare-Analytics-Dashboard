@@ -177,7 +177,7 @@ export function enrichPatientFeatures(patient: Patient): Patient {
 }
 
 // Initial Synthetic Patients List
-export const INITIAL_PATIENTS: Patient[] = [
+export const INITIAL_PATIENTS: Patient[] = ([
   {
     id: "PAT-83291",
     name: "Arthur Pendelton",
@@ -280,7 +280,7 @@ export const INITIAL_PATIENTS: Patient[] = [
     dischargeDate: "2026-06-26",
     notes: "COPD exacerbation triggered by environmental dust. Discharged on standard maintenance therapy.",
   }
-].map(enrichPatientFeatures);
+] as Patient[]).map(enrichPatientFeatures);
 
 // Historical and Forecast Outbreak Data
 export const DISEASE_FORECASTS: DiseaseForecast[] = [
