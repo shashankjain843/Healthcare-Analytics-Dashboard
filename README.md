@@ -45,11 +45,15 @@ Powered by the Google Gemini API (`gemini-2.5-flash`), this module acts as a sec
 
 ### 6. **Academic Project Report Module (Checklist Compliant)**
 A dedicated on-screen project documentation module that generates a printable report matching TMU examiner guidelines. It includes:
-* **Data Collection & Schema:** Full tabular layout of clinical records, field names, and column types.
-* **Data Understanding (EDA):** In-depth analysis detailing condition-specific missing values (e.g. LVEF, HbA1c, FEV1), vital sign outlier thresholds, and distribution analysis.
-* **Data Preprocessing & Cleaning:** Explanation of Safe-Harbor PII anonymization, default value imputation (e.g., BP fallbacks), and feature engineering calculations.
-* **Data Visualization:** The purpose and clinical insights derived from each analytical chart.
-* **Dashboard & Business Use-Cases:** Value delivery maps for clinical ROI, resource optimization, and regulatory compliance.
+* **Business Problem:** Hospital operational hurdles (high 30-day readmissions, clinical staff overload), business objectives (reducing readmissions by 20%), expected outcomes, and success criteria.
+* **Requirement Gathering:** Inputs (demographics, physiological vitals, clinical tests) and output schemas (risk categories, disease surge forecasts, FHIR JSON exports) alongside business constraints.
+* **Data Understanding (EDA):** In-depth analysis detailing dataset shapes, condition-specific missing values (e.g. LVEF, HbA1c, FEV1), vital sign outlier thresholds, and Spearman correlation matrices.
+* **Data Preprocessing & Cleaning:** Explanation of HIPAA Safe-Harbor PII anonymization, default value imputation (e.g., BP fallbacks), invalid value handling, and feature engineering calculations.
+* **KPI Definition:** Documentation of formula parameters and clinical/business rationales for cohort sizes, readmission counts, bed occupancies, and stays.
+* **Statistical Analysis:** Mean, median, standard deviations, variances of patient descriptors, Kaplan-Meier curves comparing protocols, Hazard Ratios, and Log-Rank hypothesis test results ($p < 0.05$).
+* **Insights & Recommendations:** 12 key clinical and operational recommendations (geriatric risk bias, monsoonal dengue surge correlations, capacity bottlenecks, etc.).
+* **Testing & Validation:** Verification protocols for SPA routing transitions (<150ms), Recharts responsive UI layouts across mobile/tablet/PC, API fallbacks, and prediction audits.
+* **System Architecture & Methodology:** Technology stack mapping layers, risk algorithms, HIPAA compliance rules, and future scope.
 
 ### 7. **FHIR R4 & HIPAA Security**
 - **Safe-Harbor Anonymization Toggle:** Dynamically redacts patient names to initials (e.g. "Arthur Pendelton" -> "A. P. [REDACTED_SAFE_HARBOR]") and masks IDs throughout the UI.
