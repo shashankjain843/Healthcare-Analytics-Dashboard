@@ -1,39 +1,58 @@
 # Healthcare Analytics Dashboard (with Gemini AI Clinical Copilot)
 
-An interactive, premium hospital analytics dashboard designed to support clinical decision-making. The application features AI-driven patient readmission risk analysis, epidemiological disease forecasting, clinical treatment comparisons, HIPAA audit logging, and HL7 FHIR compliance.
+An interactive, premium hospital analytics dashboard designed to support clinical decision-making. The application integrates advanced medical heuristics, role-based security access, interactive forecasting, and clinical AI consulting.
+
+This project was built and audited against strict academic standards for a **B.Tech Data Science** project submission (Student: **Shashank Jain**, Roll No. **TCA2265036**, Teerthanker Mahaveer University).
 
 ---
 
 ## 🚀 Key Features & Modules
 
-### 1. **Gemini AI Clinical Copilot (New Integration)**
+### 1. **Gemini AI Clinical Copilot**
 Powered by the Google Gemini API (`gemini-2.5-flash`), this module acts as a secure server-side clinical assistant:
 - **AI Clinical Summaries:** Instantly synthesizes complex patient parameters (vitals, diagnoses, comorbidities, and medications) into a structured discharge report containing key health summaries, potential risks, and post-discharge protocols.
 - **Interactive Clinical Advisor Chat:** A real-time chat interface that allows doctors to consult Gemini regarding drug-drug interactions, tailored diet plans, and patient-specific vital warning signs.
 - **Quick-Start Preset Prompts:** One-click shortcuts for standard clinical tasks (e.g., *Check Drug Interactions*, *Deterioration Warnings*, *Home Care & Diet Plan*).
-- **Utility Actions:** Export summaries directly as `.txt` files or copy them to the clipboard with visual success indicators.
+- **Utility Actions & Export:** Export summaries directly as `.txt` files or copy them to the clipboard with visual success indicators.
 - **Per-Patient Memory:** Stores generated summaries and chat histories per patient dynamically, preventing repetitive API calls.
 
 ### 2. **Hospital Overview Hub**
-- Displays real-time hospital KPIs (Bed occupancy rate, Avg Length of Stay, Critical Alerts).
-- Includes active risk distribution charts and diagnostic demographic breakdowns.
-- Features a searchable, paginated **HIPAA Audit Log Table** logging all user actions (e.g., patient checks, summary generation, exports) to maintain security compliance.
+- **7-KPI Metrics Grid:** Renders real-time hospital parameters: *Total Active Cohort*, *Average Age*, *Estimated Readmission Rate*, *Bed Occupancy Rate* (with high occupancy alerts), *Avg Length of Stay*, *Estimated Mortality Rate*, and *High Risk Patients Count*.
+- **Dynamic Charts:** Renders risk cohort distributions (Pie chart) and primary admitting diagnoses (Bar chart).
+- **Clinical Insight Panels:** Shaded insight boxes that update dynamically to guide hospital administrators on bed capacities and prioritization.
+- **HIPAA Audit Log Table:** A searchable, paginated compliance table logging all user actions (logins, exports, page views, edits) to maintain security compliance.
+  > **Role Restriction:** The Audit Log table is hidden from Staff users, enforcing least-privilege access.
 
-### 3. **Readmission Risk Predictor**
-- Computes a readmission risk score (0–100%) and stratifies patients into High/Medium/Low risk classes.
-- Uses an XGBoost-inspired clinical heuristic based on age, admission count, stay duration, vital anomalies, and comorbidity counts.
-- Displays detailed, color-coded risk factor cards for rapid physician review.
+### 3. **Readmission Risk Predictor (ML Heuristic & Feature Engineering)**
+- **XGBoost-Inspired Scoring Heuristic:** Computes 30-day readmission risk probabilities (0–100%) and stratifies patients into High/Medium/Low risk.
+- **BMI Feature Engineering:** Captures raw height (cm) and weight (kg) to dynamically calculate Body Mass Index ($kg/m^2$).
+- **Feature Engineering Pipeline Panel:** Displays real-time calculations deriving:
+  - *BMI* (derived from Height/Weight)
+  - *Age Group* (Pediatric, Adult, Geriatric)
+  - *Stay Category* (Short, Moderate, Extended)
+  - *Comorbidity Burden* (Low, Burden, Severe Multimorbidity)
+  - *Avg Heart Rate* (baseline vitals)
+- **Risk Cards:** Renders color-coded, expandable cards displaying patient risk metrics and factors.
 
 ### 4. **Epidemiological Disease Forecaster**
-- Interactive charts projecting case trends for Influenza, COVID-19, Dengue, and Norovirus across regions.
-- Renders forecasted values with confidence interval shading (Upper/Lower bounds) to help hospital administrators manage beds and resources.
+- **Time-Series Area Charts:** Projects future trends for Influenza, COVID-19, Dengue, and Norovirus.
+- **Confidence Intervals:** Shades upper and lower boundaries of predicted trends, visually communicating statistical margins of error.
+- **Region & Pathogen Filtering:** Drills down trends by Metropolitan Area or specific diseases.
 
 ### 5. **Treatment Effectiveness Explorer**
-- Renders Kaplan-Meier survival curves comparing recovery/survival rates between clinical protocols (e.g., GDMT vs Protocol B vs Protocol C).
-- Computes and displays crucial research statistics: Cox Proportional Hazard Ratio, P-Value (Log-rank test), sample sizes, and median recovery days.
+- **Kaplan-Meier Survival Curves:** Compares recovery rates between clinical protocols (Standard Care vs. Protocol B vs. Protocol C).
+- **Research Statistics:** Computes Cox Proportional Hazard Ratios, Log-Rank test P-values, sample sizes, and median recovery days.
 
-### 6. **FHIR R4 & HIPAA Compliance**
-- **Safe-Harbor Anonymization:** A toggle to mask Patient PII (Patient ID, Name, Gender) dynamically to ensure HIPAA privacy compliance for training or research.
+### 6. **Academic Project Report Module (Checklist Compliant)**
+A dedicated on-screen project documentation module that generates a printable report matching TMU examiner guidelines. It includes:
+* **Data Collection & Schema:** Full tabular layout of clinical records, field names, and column types.
+* **Data Understanding (EDA):** In-depth analysis detailing condition-specific missing values (e.g. LVEF, HbA1c, FEV1), vital sign outlier thresholds, and distribution analysis.
+* **Data Preprocessing & Cleaning:** Explanation of Safe-Harbor PII anonymization, default value imputation (e.g., BP fallbacks), and feature engineering calculations.
+* **Data Visualization:** The purpose and clinical insights derived from each analytical chart.
+* **Dashboard & Business Use-Cases:** Value delivery maps for clinical ROI, resource optimization, and regulatory compliance.
+
+### 7. **FHIR R4 & HIPAA Security**
+- **Safe-Harbor Anonymization Toggle:** Dynamically redacts patient names to initials (e.g. "Arthur Pendelton" -> "A. P. [REDACTED_SAFE_HARBOR]") and masks IDs throughout the UI.
 - **FHIR R4 JSON Export:** Exports patient demographics, diagnostics, and vitals as standardized HL7 FHIR JSON Bundles.
 
 ---
